@@ -1,6 +1,6 @@
-import React from 'react';
-import { 
-  LayoutDashboard, 
+import {
+  LayoutDashboard,
+  Layers,
   TrendingUp, 
   Users, 
   DollarSign,
@@ -9,12 +9,15 @@ import {
   HelpCircle
 } from 'lucide-react';
 
-const navigation = [
-  { name: 'Dashboard', icon: LayoutDashboard, current: true },
-  { name: 'Performance', icon: TrendingUp, current: false },
-  { name: 'Audience', icon: Users, current: false },
-  { name: 'Revenue', icon: DollarSign, current: false },
-  { name: 'Comments', icon: MessageSquare, current: false },
+export type View = 'dashboard' | 'studio';
+
+const navigation: { name: string; icon: typeof LayoutDashboard; view?: View }[] = [
+  { name: 'Dashboard', icon: LayoutDashboard, view: 'dashboard' },
+  { name: 'Content Studio', icon: Layers, view: 'studio' },
+  { name: 'Performance', icon: TrendingUp },
+  { name: 'Audience', icon: Users },
+  { name: 'Revenue', icon: DollarSign },
+  { name: 'Comments', icon: MessageSquare },
 ];
 
 const secondaryNavigation = [
@@ -22,7 +25,7 @@ const secondaryNavigation = [
   { name: 'Help', icon: HelpCircle },
 ];
 
-export function Sidebar() {
+export function Sidebar({ view, onNavigate }: { view: View; onNavigate: (v: View) => void }) {
   return (
     <div className="hidden lg:flex lg:flex-shrink-0">
       <div className="flex flex-col w-64">
@@ -37,13 +40,19 @@ export function Sidebar() {
           </div>
           <nav className="mt-8 flex-1 flex flex-col" aria-label="Sidebar">
             <div className="px-2 space-y-1">
-              {navigation.map((item) => (
+              {navigation.map((item) => {
+                const current = item.view === view;
+                return (
                 <a
                   key={item.name}
-                  href="#"
+                  href={item.view ? `#${item.view}` : '#'}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (item.view) onNavigate(item.view);
+                  }}
                   className={`
                     group flex items-center px-2 py-2 text-sm font-medium rounded-md
-                    ${item.current
+                    ${current
                       ? 'bg-gray-900 text-white'
                       : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                     }
@@ -52,7 +61,7 @@ export function Sidebar() {
                   <item.icon
                     className={`
                       mr-3 flex-shrink-0 h-6 w-6
-                      ${item.current
+                      ${current
                         ? 'text-white'
                         : 'text-gray-400 group-hover:text-gray-300'
                       }
@@ -60,7 +69,8 @@ export function Sidebar() {
                   />
                   {item.name}
                 </a>
-              ))}
+                );
+              })}
             </div>
             <div className="mt-auto pt-4 px-2 space-y-1">
               {secondaryNavigation.map((item) => (

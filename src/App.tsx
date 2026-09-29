@@ -1,6 +1,7 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, type View } from './components/Sidebar';
+import { StudioApp } from './studio/StudioApp';
 import { DashboardMetricCard } from './components/DashboardMetric';
 import { ViewsChart } from './components/charts/ViewsChart';
 import { VideoPerformance } from './components/VideoPerformance';
@@ -36,13 +37,33 @@ const metrics: DashboardMetric[] = [
   },
 ];
 
+const viewFromHash = (): View => (window.location.hash === '#studio' ? 'studio' : 'dashboard');
+
 function App() {
+  const [view, setView] = useState<View>(viewFromHash);
+
+  useEffect(() => {
+    const onHash = () => setView(viewFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const navigate = (v: View) => {
+    window.location.hash = v;
+    setView(v);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="flex flex-col h-screen">
-        <Header />
+        <Header view={view} onNavigate={navigate} />
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
+          <Sidebar view={view} onNavigate={navigate} />
+          {view === 'studio' ? (
+            <main className="flex-1 min-w-0 overflow-hidden">
+              <StudioApp />
+            </main>
+          ) : (
           <main className="flex-1 relative z-0 overflow-y-auto focus:outline-none">
             <div className="py-6">
               <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
@@ -80,6 +101,7 @@ function App() {
               </div>
             </div>
           </main>
+          )}
         </div>
       </div>
     </div>

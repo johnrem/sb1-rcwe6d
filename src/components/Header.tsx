@@ -1,7 +1,7 @@
-import React from 'react';
 import { Bell, Settings, Search, Menu } from 'lucide-react';
+import type { View } from './Sidebar';
 
-export function Header() {
+export function Header({ view, onNavigate }: { view: View; onNavigate: (v: View) => void }) {
   return (
     <header className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -9,11 +9,22 @@ export function Header() {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Menu className="h-6 w-6 text-gray-500 cursor-pointer lg:hidden" />
-              <h1 className="ml-4 text-xl font-bold text-gray-900">YouTube Analytics</h1>
+              <h1 className="ml-4 text-xl font-bold text-gray-900">{view === 'studio' ? 'Content Studio' : 'YouTube Analytics'}</h1>
+            </div>
+            <div className="ml-4 flex items-center rounded-lg bg-gray-100 p-0.5 lg:hidden">
+              {(['dashboard', 'studio'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => onNavigate(v)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+                >
+                  {v === 'studio' ? 'Studio' : 'Analytics'}
+                </button>
+              ))}
             </div>
           </div>
           
-          <div className="flex-1 flex items-center justify-center px-2 lg:ml-6 lg:justify-end">
+          <div className={`flex-1 items-center justify-center px-2 lg:ml-6 lg:justify-end ${view === 'studio' ? 'hidden' : 'hidden sm:flex'}`}>
             <div className="max-w-lg w-full lg:max-w-xs">
               <label htmlFor="search" className="sr-only">Search</label>
               <div className="relative">
