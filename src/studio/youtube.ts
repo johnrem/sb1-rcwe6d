@@ -166,7 +166,7 @@ async function channelViaApi(input: string, key: string, max: number): Promise<C
   return { channelId: ch.id, title: ch.snippet.title, videos, via: 'api' };
 }
 
-/** Latest ~15 uploads via the site's /api/yt-channel function (no key needed). */
+/** Via the site's /api/yt-channel function: full history if the site has a YOUTUBE_API_KEY, else the latest ~15 uploads. */
 async function channelViaFeed(input: string): Promise<ChannelResult> {
   let res: Response;
   try {
@@ -178,7 +178,7 @@ async function channelViaFeed(input: string): Promise<ChannelResult> {
   if (!type.includes('json')) throw new Error('The channel reader only runs on the deployed site. Locally, add a YouTube API key in Settings.');
   const j = await res.json();
   if (!res.ok) throw new Error(j.error ?? `Channel reader failed (${res.status}).`);
-  return { ...j, via: 'feed' };
+  return { ...j, via: j.source === 'api' ? 'api' : 'feed' };
 }
 
 export function fetchChannel(input: string, youtubeApiKey?: string, max = 200): Promise<ChannelResult> {

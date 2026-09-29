@@ -52,7 +52,7 @@ export interface Project {
   /** Standing guidance sent with every generation: brand voice, product facts, do/don't. */
   guidelines: string;
   /** YouTube channel the Auto section reads from (URL, @handle or channel ID). */
-  channel?: { input: string; channelId?: string; title?: string; lastSyncedAt?: number; videoCount?: number };
+  channel?: { input: string; channelId?: string; title?: string; lastSyncedAt?: number; videoCount?: number; via?: 'api' | 'feed' };
   /** Latest Auto recommendations for this project. */
   ideas?: Idea[];
   ideasGoal?: string;

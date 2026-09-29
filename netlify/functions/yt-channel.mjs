@@ -1,5 +1,8 @@
-// Reads a YouTube channel's public RSS feed (latest ~15 uploads with view counts).
-// Runs server-side on Netlify because browsers can't fetch YouTube pages directly (CORS).
+// Lists a YouTube channel's uploads for Content Studio's Auto section.
+// With a YOUTUBE_API_KEY environment variable set in Netlify (Site configuration → Environment variables),
+// it uses the YouTube Data API: full upload history with views and durations, and the key never reaches browsers.
+// Without one it falls back to the public RSS feed (latest ~15 uploads with view counts).
+// Runs server-side because browsers can't fetch YouTube pages directly (CORS).
 // GET /api/yt-channel?input=<channel URL | @handle | UC… id>
 
 const HEADERS = {
@@ -46,10 +49,61 @@ async function resolveChannelId(input) {
   return id;
 }
 
+const API = 'https://www.googleapis.com/youtube/v3';
+const MAX_VIDEOS = 300;
+
+async function yt(path, params, key) {
+  const res = await fetch(`${API}/${path}?${new URLSearchParams({ ...params, key })}`);
+  const j = await res.json();
+  if (!res.ok) throw new Error(`YouTube API: ${j.error?.message ?? res.status}`);
+  return j;
+}
+
+async function viaApi(input, key) {
+  const s = input.trim();
+  const params = { part: 'snippet,contentDetails' };
+  const id = s.match(/(UC[\w-]{22})/)?.[1];
+  const handle = s.match(/@([\w.-]+)/)?.[1];
+  if (id) params.id = id;
+  else if (handle) params.forHandle = handle;
+  else params.id = await resolveChannelId(s);
+  const ch = (await yt('channels', params, key)).items?.[0];
+  if (!ch) throw new Error('Channel not found. Try the full channel URL or @handle.');
+
+  const ids = [];
+  let pageToken = '';
+  while (ids.length < MAX_VIDEOS) {
+    const page = await yt('playlistItems', { part: 'contentDetails', playlistId: ch.contentDetails.relatedPlaylists.uploads, maxResults: '50', ...(pageToken && { pageToken }) }, key);
+    ids.push(...page.items.map((i) => i.contentDetails.videoId));
+    if (!page.nextPageToken) break;
+    pageToken = page.nextPageToken;
+  }
+
+  const videos = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = await yt('videos', { part: 'snippet,statistics,contentDetails', id: ids.slice(i, i + 50).join(',') }, key);
+    for (const v of batch.items) {
+      const t = v.snippet.thumbnails ?? {};
+      videos.push({
+        videoId: v.id,
+        title: v.snippet.title,
+        description: v.snippet.description ?? '',
+        publishedAt: v.snippet.publishedAt,
+        views: v.statistics?.viewCount ? Number(v.statistics.viewCount) : undefined,
+        duration: v.contentDetails?.duration,
+        thumbnail: t.high?.url || t.medium?.url || t.default?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+      });
+    }
+  }
+  return { channelId: ch.id, title: ch.snippet.title, videos, source: 'api' };
+}
+
 export default async (req) => {
   const input = new URL(req.url).searchParams.get('input');
   if (!input || input.length > 300) return json({ error: 'Pass ?input= with a channel URL, @handle or channel ID.' }, 400);
   try {
+    const key = process.env.YOUTUBE_API_KEY;
+    if (key) return json(await viaApi(input, key));
     const channelId = await resolveChannelId(input);
     const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`, { headers: HEADERS });
     if (!res.ok) return json({ error: `YouTube feed returned ${res.status}.` }, 502);
@@ -71,7 +125,7 @@ export default async (req) => {
         };
       })
       .filter((v) => v.videoId);
-    return json({ channelId, title: tag(head, 'title'), videos });
+    return json({ channelId, title: tag(head, 'title'), videos, source: 'feed' });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : String(err) }, 502);
   }

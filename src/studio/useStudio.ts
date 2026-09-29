@@ -298,7 +298,7 @@ export function useStudio() {
     await db.putMany('sources', writes);
     await reloadSources();
     await updateProject({
-      channel: { input, channelId: result.channelId, title: result.title, lastSyncedAt: now, videoCount: result.videos.length },
+      channel: { input, channelId: result.channelId, title: result.title, lastSyncedAt: now, videoCount: result.videos.length, via: result.via },
     });
     return result;
   };

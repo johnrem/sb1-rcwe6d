@@ -156,9 +156,9 @@ export function AutoPanel({ studio, onOpenPiece }: { studio: Studio; onOpenPiece
               </p>
             )}
             <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-              {settings.youtubeApiKey
-                ? 'Using your YouTube API key: full upload history with views and durations.'
-                : 'Without a YouTube API key this reads your latest 15 uploads. Add a free key in Settings for your full history. Videos build up in your library with every sync.'}{' '}
+              {settings.youtubeApiKey || project.channel?.via === 'api'
+                ? 'Reading your full upload history with views and durations via the YouTube API.'
+                : "Reading your latest 15 uploads. For your full history, add a YOUTUBE_API_KEY environment variable to the Netlify site (or a key in Settings). Videos build up in your library with every sync."}{' '}
               Transcripts let Claude cite exact moments: click a video in Sources to paste one.
             </p>
 
