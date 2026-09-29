@@ -6,6 +6,36 @@ export interface FormatPreset {
 
 export const FORMATS: FormatPreset[] = [
   {
+    id: 'promo-reel',
+    label: 'Promo reel / trailer (video)',
+    guidance:
+      'A 30–90 second promo edit plan. Start with a one-line concept and target runtime. Then a numbered shot list as a table: time in the reel, SOURCE (video title + [mm:ss] timestamp from its transcript, or "b-roll needed"), what we see, on-screen text, and audio (VO line / music / SFX). Cold open on the most intense moment, escalate pace, and use hard cuts on impacts. End on the strongest unresolved moment, then an end card with CTA. After the table: full VO script, music direction, and 3 caption/title options. Only cite timestamps that appear in the sources.',
+  },
+  {
+    id: 'explainer',
+    label: 'Explainer video script',
+    guidance:
+      'A 60–180 second explainer. Hook question, then 3–5 beats that each explain one idea, with a visual for each beat (cite source video + [mm:ss] where footage exists), on-screen text, and a clear takeaway and CTA at the end.',
+  },
+  {
+    id: 'recap',
+    label: 'Recap / "previously on"',
+    guidance:
+      'A 45–120 second recap of the story so far: the key rivalries, upsets and standings in chronological beats, each tied to a source clip + [mm:ss] timestamp, with VO and an ending that sets up what comes next.',
+  },
+  {
+    id: 'compilation',
+    label: 'Compilation / best-of plan',
+    guidance:
+      'A best-of compilation plan: title and thumbnail concept, running order of segments (source video + [mm:ss] in/out points), a short intro and transitions between segments, and chapters for the description.',
+  },
+  {
+    id: 'cutdowns',
+    label: 'Social cutdown pack (Shorts / Reels)',
+    guidance:
+      '5 vertical 15–30 second cutdowns. For each: source video + [mm:ss] in/out, the hook in the first 2 seconds, on-screen caption text, and a post caption with hashtags. Each must stand alone.',
+  },
+  {
     id: 'social-ad',
     label: 'Social ad (Meta / Instagram)',
     guidance: 'Primary text (hook in the first line, under 125 characters before the fold), headline (max 40 characters), description (max 30 characters), and a call-to-action button label.',

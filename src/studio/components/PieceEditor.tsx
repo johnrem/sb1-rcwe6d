@@ -24,7 +24,18 @@ import { download } from '../util';
 
 const QUICK_REFINES = ['Make it shorter', 'Punchier hook', 'More urgency', 'Simpler words', 'More benefit-driven', 'Add social proof', 'Less salesy'];
 
-export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpenSettings: () => void }) {
+export function PieceEditor({
+  studio,
+  onOpenSettings,
+  autoRunPieceId,
+  onAutoRunStarted,
+}: {
+  studio: Studio;
+  onOpenSettings: () => void;
+  /** Piece to start generating as soon as it's shown (one-click make from Auto). */
+  autoRunPieceId?: string | null;
+  onAutoRunStarted?: () => void;
+}) {
   const { piece, project, projectPieces, settings } = studio;
   const [briefOpen, setBriefOpen] = useState(true);
   const [variations, setVariations] = useState(1);
@@ -53,6 +64,14 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
     setError('');
     setConfirmDelete(false);
   }, [piece?.id]);
+
+  const runRef = useRef<((mode: 'generate' | 'refine', instr?: string) => unknown) | null>(null);
+  useEffect(() => {
+    if (!autoRunPieceId || piece?.id !== autoRunPieceId) return;
+    // Clearing the request re-renders this effect, so don't cancel the queued run in a cleanup.
+    onAutoRunStarted?.();
+    setTimeout(() => runRef.current?.('generate'), 0);
+  }, [autoRunPieceId, piece?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!piece || !project) return <div className="flex-1" />;
 
@@ -112,6 +131,7 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
     }
   };
 
+  runRef.current = run;
   const body = streaming ?? piece.body;
   const words = body.trim() ? body.trim().split(/\s+/).length : 0;
 
@@ -186,6 +206,15 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
                   value={piece.brief}
                   onChange={(e) => set({ brief: e.target.value })}
                   placeholder="e.g. Drive ticket sales for the season finale. Lead with the fan-favourite bot rematch; mention the early-bird price."
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <label className={labelCls}>Key facts & parameters</label>
+                <textarea
+                  className={`${inputCls} h-16`}
+                  value={piece.facts ?? ''}
+                  onChange={(e) => set({ facts: e.target.value })}
+                  placeholder="Hard facts Claude must respect, e.g. We're halfway through the season. 20 full episodes plus compilation content are out now. New episodes every Thursday."
                 />
               </div>
               <div>

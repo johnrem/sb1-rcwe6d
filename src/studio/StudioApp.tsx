@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
-import { BookOpen, ChevronDown, Download, FolderKanban, History, Layers, Loader2, PenLine, Plus, Settings as SettingsIcon, Trash2, Upload } from 'lucide-react';
+import { BookOpen, ChevronDown, Download, FolderKanban, History, Layers, Loader2, PenLine, Plus, Settings as SettingsIcon, Trash2, Upload, Zap } from 'lucide-react';
 import { useStudio } from './useStudio';
 import * as db from './db';
 import type { Piece, Project, Source, Version } from './types';
 import { SourceLibrary } from './components/SourceLibrary';
 import { PieceEditor } from './components/PieceEditor';
 import { VersionPanel } from './components/VersionPanel';
+import { AutoPanel } from './components/AutoPanel';
 import { GuidelinesModal, SettingsModal } from './components/StudioModals';
 import { download } from './util';
 
@@ -23,6 +24,8 @@ export function StudioApp() {
   const [modal, setModal] = useState<'settings' | 'guidelines' | null>(null);
   const [projectMenu, setProjectMenu] = useState(false);
   const [mobilePane, setMobilePane] = useState<'sources' | 'editor' | 'history'>('editor');
+  const [mode, setMode] = useState<'editor' | 'auto'>('editor');
+  const [autoRunPieceId, setAutoRunPieceId] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const { project } = studio;
 
@@ -125,6 +128,21 @@ export function StudioApp() {
           </div>
         </div>
 
+        <div className="ml-2 flex items-center rounded-lg bg-slate-100 p-0.5">
+          {([
+            ['editor', 'Editor', PenLine],
+            ['auto', 'Auto', Zap],
+          ] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              onClick={() => setMode(id)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${mode === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              <Icon className={`h-3.5 w-3.5 ${id === 'auto' && mode === id ? 'text-indigo-600' : ''}`} /> {label}
+            </button>
+          ))}
+        </div>
+
         <div className="ml-auto flex items-center gap-1">
           <button onClick={() => setModal('guidelines')} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
             <BookOpen className="h-4 w-4" /> <span className="hidden sm:inline">Guidelines</span>
@@ -158,12 +176,33 @@ export function StudioApp() {
         <div className={`${mobilePane === 'sources' ? 'flex' : 'hidden'} w-full lg:flex lg:w-80 lg:flex-none`}>
           <SourceLibrary studio={studio} />
         </div>
-        <div className={`${mobilePane === 'editor' ? 'flex' : 'hidden'} min-w-0 flex-1 lg:flex`}>
-          <PieceEditor studio={studio} onOpenSettings={() => setModal('settings')} />
-        </div>
-        <div className={`${mobilePane === 'history' ? 'flex' : 'hidden'} w-full lg:flex lg:w-72 lg:flex-none xl:w-80`}>
-          <VersionPanel studio={studio} />
-        </div>
+        {mode === 'auto' ? (
+          <div className={`${mobilePane === 'sources' ? 'hidden' : 'flex'} min-w-0 flex-1 lg:flex`}>
+            <AutoPanel
+              studio={studio}
+              onOpenPiece={(pieceId, autoRun) => {
+                studio.setActive((a) => ({ ...a, pieceId }));
+                if (autoRun) setAutoRunPieceId(pieceId);
+                setMode('editor');
+                setMobilePane('editor');
+              }}
+            />
+          </div>
+        ) : (
+          <>
+            <div className={`${mobilePane === 'editor' ? 'flex' : 'hidden'} min-w-0 flex-1 lg:flex`}>
+              <PieceEditor
+                studio={studio}
+                onOpenSettings={() => setModal('settings')}
+                autoRunPieceId={autoRunPieceId}
+                onAutoRunStarted={() => setAutoRunPieceId(null)}
+              />
+            </div>
+            <div className={`${mobilePane === 'history' ? 'flex' : 'hidden'} w-full lg:flex lg:w-72 lg:flex-none xl:w-80`}>
+              <VersionPanel studio={studio} />
+            </div>
+          </>
+        )}
       </div>
 
       {modal === 'settings' && <SettingsModal settings={studio.settings} onSave={studio.setSettings} onClose={() => setModal(null)} />}

@@ -6,58 +6,71 @@ import { uid } from '../db';
 import type { Source } from '../types';
 import { cleanTranscript, fetchYouTubeMeta, parseYouTubeId } from '../youtube';
 
-export function YouTubeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Source) => void }) {
+export function YouTubeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Source[]) => void }) {
   const [url, setUrl] = useState('');
   const [transcript, setTranscript] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const videoId = parseYouTubeId(url);
+  const ids = [...new Set(url.split(/[\s,]+/).map(parseYouTubeId).filter((x): x is string => !!x))];
+  const videoId = ids.length === 1 ? ids[0] : null;
 
   const submit = async () => {
-    if (!videoId) return setError('That does not look like a YouTube link.');
+    if (!ids.length) return setError('That does not look like a YouTube link.');
     setBusy(true);
-    const meta = await fetchYouTubeMeta(videoId);
     const now = Date.now();
-    onAdd({
-      id: uid(),
-      kind: 'youtube',
-      origin: 'youtube',
-      title: meta.title,
-      url: `https://www.youtube.com/watch?v=${videoId}`,
-      youtube: { videoId, author: meta.author, thumbnail: meta.thumbnail },
-      text: transcript.trim() ? cleanTranscript(transcript) : '',
-      tags: ['youtube'],
-      createdAt: now,
-      updatedAt: now,
-    });
+    const added = await Promise.all(
+      ids.map(async (id): Promise<Source> => {
+        const meta = await fetchYouTubeMeta(id);
+        return {
+          id: uid(),
+          kind: 'youtube',
+          origin: 'youtube',
+          title: meta.title,
+          url: `https://www.youtube.com/watch?v=${id}`,
+          youtube: { videoId: id, author: meta.author, thumbnail: meta.thumbnail },
+          text: ids.length === 1 && transcript.trim() ? cleanTranscript(transcript) : '',
+          tags: ['youtube'],
+          createdAt: now,
+          updatedAt: now,
+        };
+      }),
+    );
+    onAdd(added);
     onClose();
   };
 
   return (
-    <Modal title="Add a YouTube video" onClose={onClose}>
+    <Modal title="Add YouTube videos" onClose={onClose}>
       <div className="space-y-4">
         <div>
-          <label className={labelCls}>Video URL</label>
-          <input autoFocus className={inputCls} placeholder="https://www.youtube.com/watch?v=… or youtu.be/… or /shorts/…" value={url} onChange={(e) => { setUrl(e.target.value); setError(''); }} />
+          <label className={labelCls}>Video links (one or many)</label>
+          <textarea
+            autoFocus
+            className={`${inputCls} h-20 font-mono text-xs`}
+            placeholder={'https://www.youtube.com/watch?v=…\nhttps://youtu.be/…\nhttps://www.youtube.com/shorts/…'}
+            value={url}
+            onChange={(e) => { setUrl(e.target.value); setError(''); }}
+          />
+          {ids.length > 1 && <p className="mt-1 text-xs text-slate-500">{ids.length} videos found. Add transcripts afterwards by clicking each video in Sources.</p>}
         </div>
         {videoId && (
           <div className="aspect-video overflow-hidden rounded-xl bg-slate-900">
             <iframe className="h-full w-full" src={`https://www.youtube-nocookie.com/embed/${videoId}`} title="Preview" allowFullScreen />
           </div>
         )}
-        <div>
+        {ids.length <= 1 && <div>
           <label className={labelCls}>Transcript (recommended)</label>
           <textarea className={`${inputCls} h-32 font-mono text-xs`} placeholder="Paste the transcript here…" value={transcript} onChange={(e) => setTranscript(e.target.value)} />
           <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
             On YouTube, open the video's description, click <b>Show transcript</b>, select all the text and paste it here. Timestamps are cleaned out automatically.
             You can also drop a <code>.srt</code>/<code>.vtt</code> caption file into the Sources panel. Without a transcript, Claude only sees the title and channel.
           </p>
-        </div>
+        </div>}
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <div className="flex justify-end gap-2">
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn variant="primary" onClick={submit} disabled={!url || busy}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Youtube className="h-4 w-4" />} Add video
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Youtube className="h-4 w-4" />} {ids.length > 1 ? `Add ${ids.length} videos` : 'Add video'}
           </Btn>
         </div>
       </div>
