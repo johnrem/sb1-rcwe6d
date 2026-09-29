@@ -1,7 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { Piece, Project, Settings, Source } from './types';
-import { formatById } from './formats';
+import type { Idea, Piece, Project, Settings, Source } from './types';
+import { FORMATS, formatById } from './formats';
+import { uid } from './db';
 import { blobToBase64, imageForApi } from './files';
+import { formatDuration } from './youtube';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (recommended)' },
@@ -11,6 +13,27 @@ export const MODELS = [
 ];
 
 type Block = Anthropic.Beta.BetaContentBlockParam;
+
+/** Everything we know about a YouTube source, as text: metadata, description and (timestamped) transcript. */
+function youtubeText(src: Source) {
+  const y = src.youtube;
+  const meta = [
+    `YouTube video: ${src.title}${y?.author ? ` by ${y.author}` : ''}`,
+    `URL: ${src.url}`,
+    y?.publishedAt && `Published: ${y.publishedAt.slice(0, 10)}`,
+    y?.views != null && `Views: ${y.views.toLocaleString('en-US')}`,
+    y?.duration && `Duration: ${formatDuration(y.duration)}`,
+  ].filter(Boolean);
+  const parts = [meta.join('\n')];
+  if (y?.description?.trim()) parts.push(`Description:\n${y.description.trim()}`);
+  const transcript = src.text?.trim();
+  parts.push(
+    transcript
+      ? `Transcript (timestamps in [m:ss]):\n${transcript}`
+      : '(No transcript provided. Use only the metadata and description above; do not invent what happens in the video or cite timestamps for it.)',
+  );
+  return parts.join('\n\n');
+}
 
 async function sourceBlocks(src: Source, note: string | undefined): Promise<Block[]> {
   const context = note ? `How to use this source: ${note}` : undefined;
@@ -32,11 +55,7 @@ async function sourceBlocks(src: Source, note: string | undefined): Promise<Bloc
       },
     ];
   }
-  let text = src.text?.trim() ?? '';
-  if (src.kind === 'youtube') {
-    const header = `YouTube video: ${src.title}${src.youtube?.author ? ` by ${src.youtube.author}` : ''}\nURL: ${src.url}`;
-    text = text ? `${header}\n\nTranscript:\n${text}` : `${header}\n\n(No transcript provided. Use only the title and channel; do not invent what the video says.)`;
-  }
+  const text = src.kind === 'youtube' ? youtubeText(src) : src.text?.trim() ?? '';
   if (!text) return [];
   return [{ type: 'document', title, context, source: { type: 'text', media_type: 'text/plain', data: text } }];
 }
@@ -70,6 +89,7 @@ export function buildTask(piece: Piece, mode: GenerateRequest['mode'], instructi
     `Deliverable: ${format.id === 'custom' ? piece.title : format.label}`,
     format.guidance && `Format requirements: ${format.guidance}`,
     piece.brief && `Brief: ${piece.brief}`,
+    piece.facts?.trim() && `Key facts & parameters (treat as true and must be reflected):\n${piece.facts.trim()}`,
     piece.audience && `Audience: ${piece.audience}`,
     piece.tone && `Tone: ${piece.tone}`,
     piece.length && `Length: ${piece.length}`,
@@ -113,6 +133,12 @@ export async function generate(req: GenerateRequest): Promise<{ text: string; mo
 
   const system = buildSystem(project);
 
+  const params = requestParams(settings, system, content);
+
+  return runStream(client, params, req.signal, req.onText);
+}
+
+function requestParams(settings: Settings, system: string, content: Block[]): Anthropic.Beta.MessageCreateParamsNonStreaming {
   const isHaiku = settings.model.startsWith('claude-haiku');
   const isFable = settings.model.startsWith('claude-fable');
   const params: Anthropic.Beta.MessageCreateParamsNonStreaming = {
@@ -128,9 +154,17 @@ export async function generate(req: GenerateRequest): Promise<{ text: string; mo
     params.fallbacks = 'default';
     if (!isFable) params.thinking = { type: 'adaptive' };
   }
+  return params;
+}
 
-  const stream = client.beta.messages.stream(params, { signal: req.signal });
-  stream.on('text', (_delta, snapshot) => req.onText(snapshot));
+async function runStream(
+  client: Anthropic,
+  params: Anthropic.Beta.MessageCreateParamsNonStreaming,
+  signal: AbortSignal,
+  onText?: (snapshot: string) => void,
+): Promise<{ text: string; model: string }> {
+  const stream = client.beta.messages.stream(params, { signal });
+  if (onText) stream.on('text', (_delta, snapshot) => onText(snapshot));
   const final = await stream.finalMessage();
 
   if (final.stop_reason === 'refusal') {
@@ -172,11 +206,7 @@ export function buildManualPrompt(req: Pick<GenerateRequest, 'project' | 'piece'
       blocks.push(`<source title="${title}" type="${src.kind}">(attached to this message as a file)${note}</source>`);
       continue;
     }
-    let text = src.text?.trim() ?? '';
-    if (src.kind === 'youtube') {
-      const header = `YouTube video: ${src.title}${src.youtube?.author ? ` by ${src.youtube.author}` : ''}\nURL: ${src.url}`;
-      text = text ? `${header}\n\nTranscript:\n${text}` : `${header}\n\n(No transcript provided. Use only the title and channel; do not invent what the video says.)`;
-    }
+    const text = src.kind === 'youtube' ? youtubeText(src) : src.text?.trim() ?? '';
     if (text) blocks.push(`<source title="${title}">${note}\n${text}\n</source>`);
   }
   const prompt = [
@@ -185,4 +215,88 @@ export function buildManualPrompt(req: Pick<GenerateRequest, 'project' | 'piece'
     '\n' + buildTask(req.piece, req.mode, req.instruction, req.variations),
   ].join('\n');
   return { prompt, attachments };
+}
+
+// ---------- Auto: content recommendations ----------
+
+export interface IdeasRequest {
+  project: Project;
+  videos: Source[];
+  goal: string;
+  count: number;
+}
+
+const IDEA_FORMATS = FORMATS.filter((f) => f.id !== 'custom');
+
+/** One prompt that works both via the API and pasted into Claude.ai. */
+export function buildIdeasPrompt({ project, videos, goal, count }: IdeasRequest) {
+  const catalog = videos
+    .map((v) => {
+      const y = v.youtube;
+      const bits = [
+        `id=${y?.videoId}`,
+        `"${v.title}"`,
+        y?.publishedAt && `published ${y.publishedAt.slice(0, 10)}`,
+        y?.views != null && `${y.views.toLocaleString('en-US')} views`,
+        y?.duration && `length ${formatDuration(y.duration)}`,
+        v.text?.trim() ? 'has transcript' : null,
+      ].filter(Boolean);
+      const desc = y?.description?.replace(/\s+/g, ' ').trim().slice(0, 280);
+      const excerpt = v.text?.replace(/\s+/g, ' ').trim().slice(0, 400);
+      return `- ${bits.join(' · ')}${desc ? `\n  Description: ${desc}` : ''}${excerpt ? `\n  Transcript excerpt: ${excerpt}` : ''}`;
+    })
+    .join('\n');
+
+  return [
+    'You are a content strategist for a YouTube channel. Using the channel catalog below, recommend content we should make next to grow views and engagement.',
+    project.guidelines.trim() && `\nBrand guidelines:\n${project.guidelines.trim()}`,
+    goal.trim() && `\nWhat is going on right now / what we want:\n${goal.trim()}`,
+    `\nChannel catalog (${videos.length} videos, newest first):\n${catalog}`,
+    `\nRecommend exactly ${count} ideas. Mix formats (promos and trailers, explainers, recaps, compilations, social cutdowns, ads, titles/descriptions) as the catalog and goal justify. Lean on videos with strong views and on anything timely. Each idea must use 1–8 videos from the catalog as source material, referenced by id.`,
+    `\nAllowed format ids: ${IDEA_FORMATS.map((f) => `${f.id} (${f.label})`).join(', ')}.`,
+    `\nReply with JSON only, no prose, in exactly this shape:
+{"ideas":[{"title":"short name","format":"one of the format ids","why":"1–2 sentences: why this will work, citing views or timing","brief":"what the piece should do and the angle","facts":"hard facts to respect, from the goal/catalog","tone":"...","audience":"...","length":"...","videoIds":["id", "..."]}]}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** Tolerant parse: accepts raw JSON, a fenced block, or JSON surrounded by stray text. */
+export function parseIdeas(text: string, knownVideoIds: Set<string>): Idea[] {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1];
+  const candidate = fenced ?? text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  let data: unknown;
+  try {
+    data = JSON.parse(candidate);
+  } catch {
+    throw new Error("Couldn't read the recommendations. Make sure you pasted Claude's whole reply (it should be JSON).");
+  }
+  const list = Array.isArray(data) ? data : (data as { ideas?: unknown }).ideas;
+  if (!Array.isArray(list) || !list.length) throw new Error('The reply had no ideas in it.');
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  return list.map((raw) => {
+    const r = raw as Record<string, unknown>;
+    const format = FORMATS.some((f) => f.id === r.format) ? String(r.format) : 'custom';
+    const videoIds = (Array.isArray(r.videoIds) ? r.videoIds : []).map(String).filter((id) => knownVideoIds.has(id));
+    return {
+      id: uid(),
+      title: str(r.title) || 'Untitled idea',
+      format,
+      why: str(r.why),
+      brief: str(r.brief),
+      facts: str(r.facts),
+      tone: str(r.tone),
+      audience: str(r.audience),
+      length: str(r.length),
+      videoIds,
+    };
+  });
+}
+
+export async function recommendIdeas(settings: Settings, req: IdeasRequest, signal: AbortSignal): Promise<Idea[]> {
+  if (!settings.apiKey) throw new Error('Add your Anthropic API key in Settings first.');
+  const client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true });
+  const params = requestParams(settings, 'You recommend content strategy. Reply with JSON only.', [{ type: 'text', text: buildIdeasPrompt(req) }]);
+  const { text } = await runStream(client, params, signal);
+  return parseIdeas(text, new Set(req.videos.map((v) => v.youtube!.videoId)));
 }

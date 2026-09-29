@@ -166,6 +166,10 @@ export function SourceLibrary({ studio }: { studio: Studio }) {
     studio.addSources([s]);
     if (piece) studio.updatePiece(piece.id, { sources: [...piece.sources, { sourceId: s.id }] });
   };
+  const addMany = (list: Source[]) => {
+    studio.addSources(list);
+    if (piece) studio.updatePiece(piece.id, { sources: [...piece.sources, ...list.map((s) => ({ sourceId: s.id }))] });
+  };
 
   return (
     <aside
@@ -297,7 +301,7 @@ export function SourceLibrary({ studio }: { studio: Studio }) {
         })}
       </div>
 
-      {modal === 'youtube' && <YouTubeModal onClose={() => setModal(null)} onAdd={add} />}
+      {modal === 'youtube' && <YouTubeModal onClose={() => setModal(null)} onAdd={addMany} />}
       {modal === 'note' && <NoteModal onClose={() => setModal(null)} onAdd={add} />}
       {preview && (
         <SourcePreviewModal

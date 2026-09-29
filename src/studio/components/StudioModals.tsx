@@ -22,6 +22,13 @@ export function SettingsModal({ settings, onSave, onClose }: { settings: Setting
           </p>
         </div>
         <div>
+          <label className={labelCls}>YouTube Data API key (optional)</label>
+          <input type="password" autoComplete="off" className={`${inputCls} font-mono`} value={s.youtubeApiKey ?? ''} onChange={(e) => setS({ ...s, youtubeApiKey: e.target.value.trim() })} placeholder="AIza…" />
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            Lets Auto read your whole channel (not just the latest 15 uploads) with views and durations. Free: Google Cloud Console → enable “YouTube Data API v3” → Credentials → API key. Restrict it to this site's address.
+          </p>
+        </div>
+        <div>
           <label className={labelCls}>Model</label>
           <select className={inputCls} value={s.model} onChange={(e) => setS({ ...s, model: e.target.value })}>
             {MODELS.map((m) => (

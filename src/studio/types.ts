@@ -23,6 +23,13 @@ export interface Source {
     videoId: string;
     author?: string;
     thumbnail: string;
+    description?: string;
+    publishedAt?: string;
+    views?: number;
+    /** ISO 8601 duration from the Data API, e.g. PT42M10S. */
+    duration?: string;
+    /** Set when the video was imported by a channel sync. */
+    channelId?: string;
   };
   tags: string[];
   createdAt: number;
@@ -44,6 +51,12 @@ export interface Project {
   name: string;
   /** Standing guidance sent with every generation: brand voice, product facts, do/don't. */
   guidelines: string;
+  /** YouTube channel the Auto section reads from (URL, @handle or channel ID). */
+  channel?: { input: string; channelId?: string; title?: string; lastSyncedAt?: number; videoCount?: number };
+  /** Latest Auto recommendations for this project. */
+  ideas?: Idea[];
+  ideasGoal?: string;
+  ideasGeneratedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -60,6 +73,8 @@ export interface Piece {
   title: string;
   format: string;
   brief: string;
+  /** Hard facts and parameters Claude must respect (season status, counts, dates, prices). */
+  facts?: string;
   tone: string;
   audience: string;
   length: string;
@@ -87,8 +102,27 @@ export interface Version {
   };
 }
 
+export interface Idea {
+  id: string;
+  title: string;
+  /** One of the format preset ids. */
+  format: string;
+  why: string;
+  brief: string;
+  facts?: string;
+  tone?: string;
+  audience?: string;
+  length?: string;
+  /** YouTube video IDs from the channel to use as sources. */
+  videoIds: string[];
+  /** Piece created from this idea, once made. */
+  pieceId?: string;
+}
+
 export interface Settings {
   apiKey: string;
+  /** Optional YouTube Data API key: unlocks full channel history and stats. */
+  youtubeApiKey?: string;
   model: string;
   effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   syncIntervalSec: number;

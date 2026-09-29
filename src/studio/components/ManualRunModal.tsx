@@ -22,12 +22,16 @@ export function ManualRunModal({
   title,
   onClose,
   onAccept,
+  hint = 'It replaces the draft and is saved to version history. Your current draft is saved as a version first.',
+  error,
 }: {
   prompt: string;
   attachments: Source[];
   title: string;
   onClose: () => void;
   onAccept: (reply: string) => void;
+  hint?: string;
+  error?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const [reply, setReply] = useState('');
@@ -108,7 +112,8 @@ export function ManualRunModal({
               onChange={(e) => setReply(e.target.value)}
               placeholder="Copy Claude's answer (the copy button under its reply works best) and paste it here…"
             />
-            <p className="mt-1 text-[11px] text-slate-500">It replaces the draft and is saved to version history. Your current draft is saved as a version first.</p>
+            <p className="mt-1 text-[11px] text-slate-500">{hint}</p>
+            {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
           </div>
         </div>
 

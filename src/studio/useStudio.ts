@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as db from './db';
 import { uid } from './db';
-import type { Piece, Project, Settings, Source, SyncedFolder, Version, VersionOrigin } from './types';
+import type { Idea, Piece, Project, Settings, Source, SyncedFolder, Version, VersionOrigin } from './types';
+import { fetchChannel } from './youtube';
 import { ensurePermission, syncFolder } from './files';
 
 const SETTINGS_KEY = 'content-studio:settings';
@@ -120,10 +121,15 @@ export function useStudio() {
     setActive({ projectId: proj.id, pieceId: pc.id });
   };
 
-  const updateProject = async (patch: Partial<Project>) => {
-    if (!project) return;
-    const next = { ...project, ...patch, updatedAt: Date.now() };
-    setProjects((ps) => ps.map((p) => (p.id === next.id ? next : p)));
+  // Always patch the latest copy so back-to-back updates (e.g. making several ideas) don't overwrite each other.
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  const updateProject = async (patch: Partial<Project> | ((p: Project) => Partial<Project>), id = active.projectId) => {
+    const current = projectsRef.current.find((p) => p.id === id);
+    if (!current) return;
+    const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch), updatedAt: Date.now() };
+    projectsRef.current = projectsRef.current.map((p) => (p.id === next.id ? next : p));
+    setProjects(projectsRef.current);
     await db.put('projects', next);
   };
 
@@ -172,8 +178,8 @@ export function useStudio() {
 
   const duplicatePiece = async () => {
     if (!piece) return;
-    const { title, format, brief, tone, audience, length, sources: refs, body } = piece;
-    const copy = newPiece(piece.projectId, { title: `${title} (copy)`, format, brief, tone, audience, length, sources: refs, body });
+    const { title, format, brief, facts, tone, audience, length, sources: refs, body } = piece;
+    const copy = newPiece(piece.projectId, { title: `${title} (copy)`, format, brief, facts, tone, audience, length, sources: refs, body });
     await db.put('pieces', copy);
     if (body.trim()) {
       const v: Version = { id: uid(), pieceId: copy.id, body, origin: 'duplicate', label: `Branched from "${title}"`, starred: false, createdAt: Date.now() };
@@ -252,6 +258,69 @@ export function useStudio() {
         return next;
       }),
     );
+  };
+
+  // ---------- YouTube channel (Auto) ----------
+  /** Pulls the channel's uploads into the source library, updating stats for videos already there. */
+  const syncChannel = async (input: string) => {
+    if (!project) return;
+    const result = await fetchChannel(input, settings.youtubeApiKey);
+    const all = await db.getAll('sources');
+    const byVideo = new Map(all.filter((s) => s.youtube).map((s) => [s.youtube!.videoId, s]));
+    const now = Date.now();
+    const writes: Source[] = result.videos.map((v) => {
+      const prev = byVideo.get(v.videoId);
+      const youtube = {
+        ...prev?.youtube,
+        videoId: v.videoId,
+        author: result.title,
+        thumbnail: v.thumbnail,
+        description: v.description,
+        publishedAt: v.publishedAt,
+        views: v.views ?? prev?.youtube?.views,
+        duration: v.duration ?? prev?.youtube?.duration,
+        channelId: result.channelId,
+      };
+      if (prev) return { ...prev, title: v.title, youtube, updatedAt: now };
+      return {
+        id: uid(),
+        kind: 'youtube',
+        origin: 'youtube',
+        title: v.title,
+        url: `https://www.youtube.com/watch?v=${v.videoId}`,
+        youtube,
+        text: '',
+        tags: ['youtube', 'channel'],
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    await db.putMany('sources', writes);
+    await reloadSources();
+    await updateProject({
+      channel: { input, channelId: result.channelId, title: result.title, lastSyncedAt: now, videoCount: result.videos.length },
+    });
+    return result;
+  };
+
+  /** Creates a piece from an Auto idea, with its videos attached as sources. */
+  const pieceFromIdea = async (idea: Idea) => {
+    if (!project) return;
+    const byVideo = new Map(sources.filter((s) => s.youtube).map((s) => [s.youtube!.videoId, s.id]));
+    const pc = newPiece(project.id, {
+      title: idea.title,
+      format: idea.format,
+      brief: idea.brief,
+      facts: [project.ideasGoal?.trim(), idea.facts?.trim()].filter(Boolean).join('\n'),
+      tone: idea.tone ?? '',
+      audience: idea.audience ?? '',
+      length: idea.length ?? '',
+      sources: idea.videoIds.map((v) => byVideo.get(v)).filter((id): id is string => !!id).map((sourceId) => ({ sourceId })),
+    });
+    await db.put('pieces', pc);
+    setPieces((ps) => [...ps, pc]);
+    await updateProject((p) => ({ ideas: (p.ideas ?? []).map((i) => (i.id === idea.id ? { ...i, pieceId: pc.id } : i)) }));
+    return pc;
   };
 
   // ---------- folders ----------
@@ -346,6 +415,9 @@ export function useStudio() {
     updateFolder,
     removeFolder,
     runSync,
+    syncChannel,
+    pieceFromIdea,
+    setPieces,
   };
 }
 
