@@ -53,7 +53,18 @@ export interface GenerateRequest {
   signal: AbortSignal;
 }
 
-function buildTask(piece: Piece, mode: GenerateRequest['mode'], instruction: string | undefined, variations: number) {
+export function buildSystem(project: Project) {
+  return [
+    'You are a senior copywriter and content strategist producing marketing content from the source material the user provides.',
+    'Ground every claim in the sources or the guidelines; if a fact is missing, leave a clearly marked [PLACEHOLDER] rather than inventing it.',
+    'Output only the finished content in Markdown. No preamble, no closing commentary.',
+    project.guidelines.trim() && `\nProject guidelines (always follow):\n${project.guidelines.trim()}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function buildTask(piece: Piece, mode: GenerateRequest['mode'], instruction: string | undefined, variations: number) {
   const format = formatById(piece.format);
   const lines = [
     `Deliverable: ${format.id === 'custom' ? piece.title : format.label}`,
@@ -100,14 +111,7 @@ export async function generate(req: GenerateRequest): Promise<{ text: string; mo
   }
   content.push({ type: 'text', text: buildTask(piece, req.mode, req.instruction, req.variations) });
 
-  const system = [
-    'You are a senior copywriter and content strategist producing marketing content from the source material the user provides.',
-    'Ground every claim in the sources or the guidelines; if a fact is missing, leave a clearly marked [PLACEHOLDER] rather than inventing it.',
-    'Output only the finished content in Markdown. No preamble, no closing commentary.',
-    project.guidelines.trim() && `\nProject guidelines (always follow):\n${project.guidelines.trim()}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const system = buildSystem(project);
 
   const isHaiku = settings.model.startsWith('claude-haiku');
   const isFable = settings.model.startsWith('claude-fable');
@@ -149,4 +153,36 @@ export function describeError(err: unknown): string {
   if (err instanceof Anthropic.APIConnectionError) return 'Could not reach the Anthropic API. Check your connection.';
   if (err instanceof Anthropic.APIError) return `API error ${err.status}: ${err.message}`;
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Builds a single self-contained prompt to paste into Claude.ai (no API key needed).
+ * Text sources are inlined; images and PDFs are listed so they can be attached in the chat.
+ */
+export function buildManualPrompt(req: Pick<GenerateRequest, 'project' | 'piece' | 'sources' | 'mode' | 'instruction' | 'variations'>) {
+  const attachments: Source[] = [];
+  const blocks: string[] = [];
+  for (const ref of req.piece.sources) {
+    const src = req.sources.get(ref.sourceId);
+    if (!src || src.missing) continue;
+    const title = src.path || src.title;
+    const note = ref.note ? `\nHow to use this source: ${ref.note}` : '';
+    if ((src.kind === 'image' || src.kind === 'pdf') && src.blob) {
+      attachments.push(src);
+      blocks.push(`<source title="${title}" type="${src.kind}">(attached to this message as a file)${note}</source>`);
+      continue;
+    }
+    let text = src.text?.trim() ?? '';
+    if (src.kind === 'youtube') {
+      const header = `YouTube video: ${src.title}${src.youtube?.author ? ` by ${src.youtube.author}` : ''}\nURL: ${src.url}`;
+      text = text ? `${header}\n\nTranscript:\n${text}` : `${header}\n\n(No transcript provided. Use only the title and channel; do not invent what the video says.)`;
+    }
+    if (text) blocks.push(`<source title="${title}">${note}\n${text}\n</source>`);
+  }
+  const prompt = [
+    buildSystem(req.project),
+    blocks.length ? `\n<sources>\n${blocks.join('\n\n')}\n</sources>` : '',
+    '\n' + buildTask(req.piece, req.mode, req.instruction, req.variations),
+  ].join('\n');
+  return { prompt, attachments };
 }

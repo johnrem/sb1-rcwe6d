@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import type { Studio } from '../useStudio';
 import { FORMATS, formatById } from '../formats';
-import { describeError, generate } from '../claude';
+import { buildManualPrompt, describeError, generate } from '../claude';
+import { ManualRunModal } from './ManualRunModal';
 import { Btn, inputCls, labelCls } from './ui';
 import { download } from '../util';
 
@@ -32,6 +33,7 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [manual, setManual] = useState<{ mode: 'generate' | 'refine'; instruction?: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const busy = streaming !== null;
 
@@ -57,8 +59,26 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
   const set = (patch: Parameters<Studio['updatePiece']>[1]) => studio.updatePiece(piece.id, patch);
   const attached = piece.sources.map((r) => ({ ref: r, src: studio.sourceMap.get(r.sourceId) })).filter((x) => x.src);
 
+  const versionLabel = (mode: 'generate' | 'refine', instr?: string) =>
+    mode === 'refine' ? `Refined: ${instr}` : variations > 1 ? `Generated ${variations} variations` : 'Generated';
+
+  // Without an API key, hand the prompt to Claude.ai and take the reply back by paste.
+  const acceptManual = async (reply: string) => {
+    if (!manual) return;
+    if (studio.hasUnsavedChanges) await studio.snapshot(piece.id, piece.body, 'before-generate', 'Draft before AI edit');
+    set({ body: reply });
+    await studio.snapshot(piece.id, reply, manual.mode, versionLabel(manual.mode, manual.instruction), {
+      model: 'Claude.ai (pasted)',
+      brief: piece.brief,
+      instruction: manual.instruction,
+      sourceTitles: attached.map((a) => a.src!.title),
+    });
+    if (manual.mode === 'refine') setInstruction('');
+    setManual(null);
+  };
+
   const run = async (mode: 'generate' | 'refine', instr?: string) => {
-    if (!settings.apiKey) return onOpenSettings();
+    if (!settings.apiKey) return setManual({ mode, instruction: instr });
     setError('');
     if (studio.hasUnsavedChanges) await studio.snapshot(piece.id, piece.body, 'before-generate', 'Draft before AI edit');
     const controller = new AbortController();
@@ -77,7 +97,7 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
         signal: controller.signal,
       });
       set({ body: text });
-      await studio.snapshot(piece.id, text, mode, mode === 'refine' ? `Refined: ${instr}` : variations > 1 ? `Generated ${variations} variations` : 'Generated', {
+      await studio.snapshot(piece.id, text, mode, versionLabel(mode, instr), {
         model,
         brief: piece.brief,
         instruction: instr,
@@ -232,6 +252,7 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
               <Btn variant="primary" onClick={() => run('generate')}>
                 <Sparkles className="h-4 w-4" /> {piece.body ? 'Regenerate' : 'Generate'}
                 {variations > 1 && ` ${variations} variations`}
+                {!settings.apiKey && ' with Claude.ai'}
               </Btn>
             )}
             {busy && (
@@ -240,9 +261,13 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
               </span>
             )}
             {!settings.apiKey && !busy && (
-              <button onClick={onOpenSettings} className="text-xs font-medium text-amber-700 underline decoration-amber-300 underline-offset-2">
-                Add your API key to generate
-              </button>
+              <span className="text-[11px] text-slate-500">
+                Copy & paste mode, no API key needed.{' '}
+                <button onClick={onOpenSettings} className="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-2">
+                  Add a key
+                </button>{' '}
+                to generate right here instead.
+              </span>
             )}
             {piece.body && !busy && <span className="text-[11px] text-slate-400">Your current draft is saved as a version first.</span>}
           </div>
@@ -323,6 +348,14 @@ export function PieceEditor({ studio, onOpenSettings }: { studio: Studio; onOpen
           </Btn>
         </form>
       </div>
+      {manual && (
+        <ManualRunModal
+          {...buildManualPrompt({ project, piece, sources: studio.sourceMap, mode: manual.mode, instruction: manual.instruction, variations: manual.mode === 'generate' ? variations : 1 })}
+          title={manual.mode === 'refine' ? `Refine with Claude.ai: ${manual.instruction}` : 'Generate with Claude.ai'}
+          onClose={() => setManual(null)}
+          onAccept={acceptManual}
+        />
+      )}
     </section>
   );
 }

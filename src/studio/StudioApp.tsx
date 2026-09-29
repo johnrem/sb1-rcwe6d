@@ -132,7 +132,6 @@ export function StudioApp() {
           </button>
           <button onClick={() => setModal('settings')} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
             <SettingsIcon className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
-            {!studio.settings.apiKey && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
           </button>
         </div>
         <input ref={importInput} type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && importProject(e.target.files[0])} />

@@ -9,6 +9,7 @@ Open the app and choose **Content Studio** in the sidebar (or go to `/#studio`).
 - **Editor** (centre): each project has several pieces. Each piece has a format preset, brief, audience, tone, length and a variation count. **Generate** streams a draft from Claude. The **Refine** bar and quick chips revise the draft in place.
 - **Version history** (right): every generation, refinement, restore and manual save (Ctrl/Cmd+S) is kept as a snapshot. You can star, rename, compare (word diff) and restore any of them. Duplicating a piece branches it.
 - **Guidelines**: per-project rules sent with every generation (brand voice, facts, banned words).
-- **Settings**: your Anthropic API key (stored only in this browser), model, effort, and sync interval.
+- **No API key needed**: without a key, *Generate* and *Refine* build the full prompt (brief, guidelines and all text sources), copy it to your clipboard and open Claude.ai. You paste Claude's reply back and it's saved to version history. Images and PDFs are listed so you can attach them in the chat.
+- **Settings**: an optional Anthropic API key (stored only in this browser) streams drafts straight into the editor. Also model, effort, and sync interval.
 
 All data lives in the browser's IndexedDB. Use *Export project backup* in the project menu to save a JSON copy.

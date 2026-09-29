@@ -11,14 +11,14 @@ export function SettingsModal({ settings, onSave, onClose }: { settings: Setting
     <Modal title="Settings" onClose={onClose}>
       <div className="space-y-4">
         <div>
-          <label className={labelCls}>Anthropic API key</label>
+          <label className={labelCls}>Anthropic API key (optional)</label>
           <div className="relative">
             <KeyRound className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input type="password" autoComplete="off" className={`${inputCls} pl-9 font-mono`} value={s.apiKey} onChange={(e) => setS({ ...s, apiKey: e.target.value.trim() })} placeholder="sk-ant-…" />
           </div>
           <p className="mt-1.5 flex gap-1.5 text-[11px] leading-relaxed text-slate-500">
             <ShieldAlert className="mt-0.5 h-3.5 w-3.5 flex-none text-amber-500" />
-            Stored only in this browser and sent only to api.anthropic.com. Don't use this on a shared computer, and don't deploy it publicly with your key in it. Get a key at console.anthropic.com.
+            Optional. Without a key, Generate and Refine use copy & paste with your Claude.ai account. With a key, drafts stream straight into the editor. The key is stored only in this browser and sent only to api.anthropic.com, so don't use it on a shared computer or deploy it publicly. Get one at console.anthropic.com.
           </p>
         </div>
         <div>
